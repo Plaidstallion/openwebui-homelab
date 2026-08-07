@@ -1,0 +1,91 @@
+http:
+  middlewares:
+    middleware-https-redirect:
+      redirectScheme:
+        scheme: https
+
+    middleware-default-headers:
+      headers:
+        customFrameOptionsValue: SAMEORIGIN
+        browserXssFilter: true
+        stsSeconds: 155520011 #31536000
+        referrerPolicy: no-referrer
+        contentTypeNosniff: true
+#        sslRedirect: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        permissionsPolicy: true
+#        sslForceHost: true
+        contentSecurityPolicy: "default-src ‘self’; script-src ‘self’ ‘unsafe-eval’; style-src ‘self’ ‘unsafe-inline’; frame-src *;  img-src * data: blob:; font-src ‘self’ data:;" # media-src *;"
+        accessControlAllowOriginList: [“<origin>”]
+#        featurePolicy: "geolocation 'none'; camera 'none'; microphone 'none'"
+
+#    middleware-youtubedl-headers:
+#      headers:
+#        forceSTSHeader: false
+#        accessControlAllowOriginList: ["*"]
+
+#    middleware-youtubedl-add-youtube-dl:
+#      addPrefix:
+#        prefix: "/youtube-dl"
+
+
+    middleware-basic-auth:
+      basicAuth:
+        users:
+          - "youruser:{SHA}your-hash-here"
+
+    middleware-redirectregex-nextcloud:
+      redirectRegex:
+        regex: "/.well-known/(card|cal)dav"
+        replacement: "/remote.php/dav/"
+
+    middleware-ratelimit:
+      rateLimit:
+        average: 200
+        burst: 400
+        period: 10s
+
+    middleware-whitelist:
+      ipAllowList: #ipWhiteList: #needs to be changed to ipAllowList in v3
+        sourceRange:
+        - "10.0.0.0/24"
+        - "192.168.0.0/16"
+        - "172.0.0.0/8"
+        ipStrategy:
+          depth: 2
+
+    middleware-add-guacamole:
+      addPrefix:
+        prefix: "/guacamole"
+
+    middleware-oauth:
+      forwardAuth:
+        address: "http://oauth:4181"
+        trustForwardHeader: true
+        authResponseHeaders: 
+          - "X-Forwarded-User"
+
+#    middleware-rickroll-redirectregex:
+#      redirectRegex:
+#        regex: "^(http://|https://|www.|http://www.|https://www.)yourdomain.com.+"
+#        replacement: "http://127.0.0.1"
+
+#    middleware-authelia:
+#      forwardAuth:
+#        address: "http://authelia:9091/api/verify?rd=https://authelia.yourdomain.com"
+#        trustForwardHeader: true
+#        authResponseHeaders: 
+#          - "Remote-User"
+#          - "Remote-Groups"
+#          - "X-Forwarded-User"
+
+#    middleware-pwndrop-add:
+#      addPrefix:
+#        prefix: "/pwndrop"
+
+    middleware-blockpath-plugin:
+      plugin:
+        blockpath:
+          regex: ["/wp-.+|^/robots.txt|^/humans.txt|^/solr.+|^/vendor.+|^/sitemap.xml|.*HelloThink.*|^/vendor.+|.*phpstorm.*|/cgi-bin/kerbynet|^/cgi-bin.+|^/owa.+"]

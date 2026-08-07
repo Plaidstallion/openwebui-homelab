@@ -1,0 +1,54 @@
+services:
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: whisper-stt
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=Systran/faster-whisper-medium
+    volumes:
+      - whisper-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  openedai-speech:
+    image: ghcr.io/matatonic/openedai-speech-min
+    container_name: openedai-speech
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./voices:/app/voices
+      - ./config:/app/config
+
+  tts-router:
+    build: ./tts-router
+    container_name: tts-router
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    environment:
+      - TTS_BACKEND_URL=http://openedai-speech:8000
+    depends_on:
+      - openedai-speech
+
+  jupyter:
+    image: quay.io/jupyter/scipy-notebook
+    container_name: jupyter-notebook
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - jupyter_data:/home/jovyan/work
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
+
+volumes:
+  whisper-cache:
+  jupyter_data:

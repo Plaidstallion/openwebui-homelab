@@ -1,0 +1,18 @@
+http:
+  routers:
+    router-grafana-ext:
+      entryPoints: 
+        - "websecure"
+      rule: "Host(`grafana.yourdomain.com`)"
+      service: "service-grafana-ext"
+      middlewares:
+        - "chain-oauth" 
+
+  services:
+    service-grafana-ext:
+      loadBalancer:
+        servers:
+          - url: "http://<GRAFANA_IP>:3100"
+        passHostHeader: true
+      
+        

@@ -1,0 +1,24 @@
+#http:
+#  routers:
+#    router-plex-ext:
+#      entryPoints: 
+#        - "websecure"
+#      rule: "Host(`plex.yourdomain.com`)"
+#      service: "service-plex-ext"
+#      middlewares:
+#        - "chain-default"
+#        - "middleware-plex-add-admin" 
+
+#  services:
+#    service-plex-ext:
+#      loadBalancer:
+#        servers:
+#          - url: "http://<SERVER_LAN_IP>:32400"
+#        passHostHeader: true
+
+#  middlewares:
+#    middleware-plex-add-admin:
+#      addPrefix:
+#      prefix: "/web/index.html"
+      
+        

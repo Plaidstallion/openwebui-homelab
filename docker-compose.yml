@@ -1,0 +1,187 @@
+# start up with 'docker compose up -d' to start in background
+# update images with 'docker-compose pull' but watchtower is doing this.
+# Use 'docker-compose up --detach --build' & 'docker-compose up --detach --build <app>' to not have to up/down.
+
+#need to perform a 'docker network create proxy' & 'docker network create mainstack'
+networks:
+
+  mainstack:
+    external: true
+  proxy:
+    external: true
+
+services:
+
+  traefik:
+    image: traefik:v3 #v3.4.0-rc1 #v3.3.4 #v3.3 #v3.2  #v3.0.1 #v2.10
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    ports:
+      - 80:80
+      - 443:443
+      - 8083:8080
+      - '19132:19132/udp'
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - $USERDIR/docker/traefik/data/traefik.yml:/traefik.yml:ro
+      - $USERDIR/docker/traefik/configurations:/configurations #:ro
+      - $USERDIR/docker/traefik/data/acme.json:/acme.json
+      - $USERDIR/docker/traefik/log/access.log:/log/access.log
+      - $USERDIR/docker/traefik/log/traefik.log:/log/traefik.log
+    environment:
+      - CF_API_EMAIL=$CLOUDFLARE_EMAIL
+      - CF_API_KEY=$CLOUDFLARE_API_KEY
+    labels:
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    ports:
+      - "3050:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://$GAMING_PC_IP:11434
+      - BYPASS_MODEL_ACCESS_CONTROL=true
+      - UID=$PUID
+      - GID=$PGID
+      - TZ=$TZ
+      - WEB_SEARCH_CONCURRENT_REQUESTS=1
+    volumes:
+      - "$USERDIR/docker/open-webui:/app/backend/data"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.open-webui.entrypoints=websecure"
+      - "traefik.http.routers.open-webui.middlewares=chain-default@file"
+      - "traefik.http.services.open-webui.loadbalancer.server.port=8080"
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    environment:
+      - SEARXNG_BASE_URL=https://searxng.$DOMAINNAME/
+      - SEARXNG_SECRET=$SEARXNG_SECRET_KEY
+      - UID=$PUID
+      - GID=$PGID
+      - TZ=$TZ
+    volumes:
+      - "$USERDIR/docker/searxng:/etc/searxng"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.searxng.entrypoints=websecure"
+      - "traefik.http.routers.searxng.middlewares=chain-oauth@file"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+    restart: unless-stopped
+
+  oauth:
+    container_name: oauth
+    image: thomseddon/traefik-forward-auth:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - CLIENT_ID=$GOOGLE_CLIENT_ID
+      - CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+      - SECRET=$OAUTH_SECRET
+      - COOKIE_DOMAIN=$DOMAINNAME
+      - INSECURE_COOKIE=false
+      - AUTH_HOST=oauth.$DOMAINNAME
+      - URL_PATH=/_oauth
+      - WHITELIST=$GGMAIL,$JMAIL,$DMAIL #,$EJGMAIL
+      - LOG_LEVEL=warn
+      - LOG_FORMAT=text
+      - LIFETIME=2592000 # 30 days
+      - DEFAULT_ACTION=auth
+      - DEFAULT_PROVIDER=google
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.oauth.entrypoints=websecure"
+      - "traefik.http.routers.oauth.middlewares=chain-oauth@file"
+      - "traefik.http.services.oauth.loadbalancer.server.port=4181"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - mainstack
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_SCHEDULE=0 0 1 * * *
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=$SENDMAIL_ADDR
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=$CLOUDFLARE_EMAIL
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.gmail.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_TLS_SKIP_VERIFY=false
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=$SENDMAIL_ADDR
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=$SENDMAIL_PW
+      - WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG="Main Server Update Notifications"
+      - WATCHTOWER_NOTIFICATION_EMAIL_DELAY=300
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+    restart: unless-stopped
+
+  cloudflare-ddns:
+    container_name: cloudflare-ddns
+    image: favonia/cloudflare-ddns:latest
+    restart: always
+    environment:
+      - CLOUDFLARE_API_TOKEN=$CLOUDFLARE_ZONE_TOKEN
+      - DOMAINS=$DOMAINNAME,*.$DOMAINNAME
+      - PROXIED=true
+      - IP6_PROVIDER=none # Change to 'detect' if you want IPv6
+
+  duplicati:
+    image: ghcr.io/linuxserver/duplicati:latest
+    container_name: duplicati
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - mainstack
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+      - DOCKER_MODS=linuxserver/mods:universal-docker
+      - DUPLICATI__WEBSERVICE_PASSWORD=$DUPLICATI_WEBUI_PASS
+      - SETTINGS_ENCRYPTION_KEY=$DUPLICATI_ENCRYPTION_KEY
+    volumes:
+      - $USERDIR/docker/duplicati:/config
+      - $USERDIR:/source
+      - /var/spool/cron/crontabs/$LINUX_USER:/crontabs/$LINUX_USER
+      - /etc:/system
+      - /opt:/opt-system
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/pool:/pool
+    ports:
+      - 8200:8200
+    restart: unless-stopped
+

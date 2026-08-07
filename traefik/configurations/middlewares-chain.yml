@@ -1,0 +1,41 @@
+http:
+  middlewares:
+    chain-basic-auth:
+      chain:
+        middlewares:
+          - middleware-default-headers
+          - middleware-basic-auth
+          - middleware-ratelimit
+          - middleware-blockpath-plugin
+          
+    chain-nextcloud:
+      chain:
+        middlewares:
+          - middleware-default-headers
+          - middleware-redirectregex-nextcloud
+          - middleware-ratelimit
+          - middleware-blockpath-plugin
+
+    chain-default:
+      chain:
+        middlewares:
+          - middleware-ratelimit
+          - middleware-default-headers
+          - middleware-blockpath-plugin
+
+    chain-oauth:
+      chain:
+        middlewares:
+          - middleware-ratelimit
+          - middleware-default-headers
+          - middleware-oauth
+          - middleware-blockpath-plugin
+      
+    chain-authelia:
+      chain:
+        middlewares:
+          - middleware-ratelimit
+          - middleware-default-headers
+          - middleware-authelia
+          - middleware-blockpath-plugin
+  

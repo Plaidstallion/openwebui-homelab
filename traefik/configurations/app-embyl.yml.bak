@@ -1,0 +1,24 @@
+http:
+  routers:
+    router-pihole-ext:
+      entryPoints: 
+        - "websecure"
+      rule: "Host(`embyl.yourdomain.com`)"
+      service: "service-embyl-ext"
+      middlewares:
+        - "chain-default" 
+#        - "middleware-pihole-add-admin"
+
+  services:
+    service-embyl-ext:
+      loadBalancer:
+        servers:
+          - url: "http://<EMBY_IP>:8096"
+        passHostHeader: true
+  
+#  middlewares:
+#    middleware-pihole-add-admin:
+#      addPrefix:
+#        prefix: "/admin"
+      
+        

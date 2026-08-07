@@ -1,0 +1,15 @@
+http:
+  routers:
+    image-server:
+      rule: "Host(`images.yourdomain.com`) && PathPrefix(`/images`)"
+      entryPoints:
+        - websecure
+      service: image-server
+      tls:
+        certResolver: cloudflare
+
+  services:
+    image-server:
+      loadBalancer:
+        servers:
+          - url: "http://<GAMING_PC_IP>:8001"

@@ -1,0 +1,14 @@
+# Real secrets - never commit these, only their .env.example counterparts
+.env
+voice-stack/.env
+
+# Traefik's certificate store - contains real TLS private keys once running
+traefik/data/acme.json
+
+# Local logs
+*.log
+service.log
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db

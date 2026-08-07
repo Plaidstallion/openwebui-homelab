@@ -1,0 +1,22 @@
+http:
+  routers:
+    router-pihole-ext:
+      entryPoints: 
+        - "websecure"
+      rule: "Host(`pihole.yourdomain.com`)"
+      service: "service-pihole-ext"
+      middlewares:
+        - "chain-oauth" 
+        - "middleware-pihole-add-admin"
+
+  services:
+    service-pihole-ext:
+      loadBalancer:
+        servers:
+          - url: "http://<PIHOLE_IP>:80"
+        passHostHeader: true
+
+  middlewares:
+    middleware-pihole-add-admin:
+      addPrefix:
+        prefix: "/admin"
