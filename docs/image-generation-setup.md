@@ -1,6 +1,6 @@
 # Image Generation Setup (Automatic1111 + Open-WebUI)
 
-This piece runs on a separate Windows machine (a gaming PC with an RTX 3090), not the main Debian server, since Stable Diffusion needs the GPU. It's not part of the Docker Compose stack — Automatic1111 and its companion image server run as persistent native Windows services.
+This piece runs on a separate Windows machine (a gaming PC with an RTX 3090), not the main Debian server, since Stable Diffusion needs the GPU. It's not part of the Docker Compose stack — Automatic1111 and its companion image server run as persistent native Windows processes.
 
 ## Stack
 
@@ -38,15 +38,12 @@ The first version of the Tool tried embedding generated images as raw base64 dir
 
 Fix: a small standalone Flask server (`serve_images.py`, port 8001) that Automatic1111's output gets saved to, which then hands back a short URL instead of the raw image data. The Tool's payload is now just a link, not the image itself.
 
-## 3. Running both as real services (NSSM)
+## 3. Running as persistent services
 
-Both were originally run as manual PowerShell windows during development, then converted to persistent Windows services using [NSSM](https://nssm.cc/) so they survive reboots and don't need a console window kept open.
+Both were originally run as manual PowerShell windows during development, then converted to persistent processes so they survive reboots and don't need a console window kept open. Along the way, the two ended up on **different mechanisms** — worth knowing why.
 
-Two services:
-- `AutomaticA1111`
-- `ImageServer`
+### `ImageServer` — NSSM (Windows Service)
 
-**`ImageServer`:**
 ```
 nssm.exe install ImageServer "C:\Users\<you>\AppData\Local\Programs\Python\Python310\python.exe" "C:\StableDiffusion\image_server\serve_images.py"
 nssm.exe set ImageServer AppDirectory "C:\StableDiffusion\image_server"
@@ -55,7 +52,13 @@ nssm.exe set ImageServer AppStderr "C:\StableDiffusion\image_server\service.log"
 nssm.exe set ImageServer Start SERVICE_AUTO_START
 ```
 
-**`AutomaticA1111`:**
+`ImageServer` is a plain Python/Flask process with no GPU dependency — NSSM works fine for it. `SERVICE_AUTO_START`, stdout/stderr redirected to a `service.log` file. Verify with `Get-Service ImageServer` — should show `Running`.
+
+### `AutomaticA1111` — Task Scheduler, **not** NSSM
+
+This one has a real story behind it, worth documenting since the failure mode was genuinely confusing.
+
+**Original setup** (worked fine for months):
 ```
 nssm.exe install AutomaticA1111 "C:\StableDiffusion\stable-diffusion-webui\webui-user.bat"
 nssm.exe set AutomaticA1111 AppDirectory "C:\StableDiffusion\stable-diffusion-webui"
@@ -64,7 +67,36 @@ nssm.exe set AutomaticA1111 AppStderr "C:\StableDiffusion\stable-diffusion-webui
 nssm.exe set AutomaticA1111 Start SERVICE_AUTO_START
 ```
 
-Both are set to `SERVICE_AUTO_START` with stdout/stderr redirected to a `service.log` file in their respective folders, since there's no interactive console to watch once they're running as services. Verify with `Get-Service` — both should show `Running`.
+**What broke it:** after installing the NVIDIA Container Toolkit and migrating the voice stack from Docker Desktop to native Docker Engine in WSL2 (see [`wsl2-docker-migration.md`](wsl2-docker-migration.md)), `AutomaticA1111` started hanging indefinitely at `Creating model from config` on every startup — no crash, no error, just stuck. This happened consistently, including across a full Windows reboot.
+
+**What it wasn't** (all individually tested and ruled out):
+- `xformers` — removed it entirely, same hang
+- VRAM contention — freed the LLM's ~20GB first, still hung, and CPU time on the process had genuinely flatlined, not just slowed
+- Windows Defender scanning the checkpoint file — added an exclusion, no change
+- GPU/CUDA/driver state — a standalone `python -c "import torch; torch.zeros(10).cuda()"` in the same venv worked instantly, ruling out driver corruption
+- Git ownership issues (a real, separate bug hit along the way — see note below) — fixed with `git config --system --add safe.directory "*"`, got further, but still hung at the same later step
+- The NSSM "log on as" account — tried both `LocalSystem` (original) and a real user account, same result either way
+- `SERVICE_INTERACTIVE_PROCESS` flag — no effect (this flag has been unreliable on modern Windows since Vista/7; true services still get Session 0 isolation regardless)
+
+**The actual cause:** running `webui.bat` directly in an interactive PowerShell window worked instantly every single time (5.2 second startup) — versus hanging indefinitely as any kind of Windows Service, under any account, with any flag. This isolates the problem to **Session 0 isolation** itself — the separate, non-interactive session all true Windows Services run in, regardless of which account they're configured to run as. Something in Automatic1111/PyTorch's GPU initialization at that step needs a real desktop session context that Session 0 doesn't provide, and this specific hang only started manifesting after enough GPU-driver-adjacent churn (the WSL2/NVIDIA Container Toolkit work) disturbed whatever had been working by coincidence before.
+
+**The fix:** replace the NSSM service with a Task Scheduler task instead. Unlike a true Windows Service, a Scheduled Task gets a genuine session context:
+
+- **General tab:** Name it (e.g. `Start Automatic1111`). Security options: **"Run whether user is logged on or not"** + **"Run with highest privileges"**
+- **Triggers tab:** New → **"At startup"**
+- **Actions tab:** New → Start a program:
+  - Program/script: `C:\StableDiffusion\stable-diffusion-webui\webui-user.bat` (not `webui.bat` directly — `webui-user.bat` is what actually applies `COMMANDLINE_ARGS`, including `--listen` and `--api-auth`)
+  - **Start in:** `C:\StableDiffusion\stable-diffusion-webui`
+
+This works immediately, and has been confirmed to survive a genuine unattended reboot with no login required.
+
+The old `AutomaticA1111` NSSM service was left in place but disabled (`Set-Service -Name AutomaticA1111 -StartupType Disabled`) rather than deleted, in case it's ever useful for comparison.
+
+**Side note — the git ownership bug:** separately from the Session 0 issue above, a corrupted `webui-user.bat` (a stray leftover line from an earlier edit) combined with a genuine git "dubious ownership" error (a security check that trips when a repo's file owner doesn't match the account running git — happens whenever a service runs as a different account than whoever originally cloned the repo) caused an unrelated crash earlier in this same debugging session. If you ever see `fatal: detected dubious ownership in repository`, the fix is:
+```
+git config --system --add safe.directory "*"
+```
+(machine-wide, so it applies regardless of which account runs git — appropriate for a single-user home server, not a shared machine)
 
 ## 4. Exposing the image server externally (Traefik)
 
