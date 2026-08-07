@@ -55,6 +55,8 @@ A couple of the `traefik/configurations/` files (`app-plex.yml.bak`, `app-embyl.
 
 5. **Import the Open-WebUI Tools/Functions/Models** from `open-webui/` via the admin panel (Workspace → Tools / Functions / Models → Import).
 
+   > **After importing:** custom Tools default to private to whoever imports them. If a Tool works for you but not for other users on your instance, open the Tool (Workspace → Tools → **Edit**, not the `⋯` menu's "Share" option — that publishes to Open-WebUI's public community hub instead) and look for an access-control setting near the top of the editor. Set it to Public, or grant read access to the appropriate users/group. This is easy to miss and can cause the model to silently fall back to unrelated built-in capabilities (like a native code interpreter) instead of erroring, which is a confusing failure mode to debug.
+
 6. **Set up Knowledge/RAG** (optional) — see [`docs/knowledge-rag-setup.md`](docs/knowledge-rag-setup.md) for the embedding config and a real disambiguation bug this setup hit (with the fix).
 
 7. **Set up backups** — see [`docs/backup-and-restore.md`](docs/backup-and-restore.md). Don't skip this, and don't skip actually testing a restore once it's running.
