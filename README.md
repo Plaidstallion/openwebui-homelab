@@ -27,6 +27,7 @@ docs/
   backup-and-restore.md        # Full Duplicati backup/restore setup, including things it can't cover
   image-generation-setup.md    # Automatic1111 + image server setup (NSSM Windows services)
   knowledge-rag-setup.md       # Knowledge/RAG setup and a disambiguation bug + fix
+  wsl2-docker-migration.md     # Moving the voice stack off Docker Desktop to native Docker Engine in WSL2
 ```
 
 A couple of the `traefik/configurations/` files (`app-plex.yml.bak`, `app-embyl.yml.bak`) are disabled/backup copies, included as-is for reference. Note `app-embyl.yml.bak` has a router/service naming collision with `app-pihole.yml` (both use `-pihole-` in their resource names) — worth renaming before actually using it, this wasn't cleaned up in the original setup.
@@ -45,7 +46,7 @@ A couple of the `traefik/configurations/` files (`app-plex.yml.bak`, `app-embyl.
    docker compose up -d
    ```
 
-3. **Bring up the voice stack** (on the machine with your GPU):
+3. **Bring up the voice stack** (on the machine with your GPU). This assumes native Docker Engine running inside WSL2 (not Docker Desktop) — see [`docs/wsl2-docker-migration.md`](docs/wsl2-docker-migration.md) for the full setup, including GPU passthrough and making it survive an unattended reboot:
    ```
    cd voice-stack
    docker compose up -d
