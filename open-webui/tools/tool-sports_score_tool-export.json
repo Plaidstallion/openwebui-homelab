@@ -1,0 +1,41 @@
+[
+  {
+    "id": "sports_score_tool",
+    "user_id": "edc128a2-544e-49c8-a9cf-b462ea424107",
+    "name": "Sports Score Tool",
+    "meta": {
+      "description": "Placeholder for live sports scores - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which sports data API/tier to integrate",
+      "manifest": {
+        "title": "Sports Score Tool",
+        "author": "greg",
+        "version": "1.1",
+        "description": "Placeholder for live sports scores - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which sports data API/tier to integrate"
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1786156745,
+    "created_at": 1786156745,
+    "user": null,
+    "write_access": true,
+    "content": "\"\"\"\ntitle: Sports Score Tool\nauthor: greg\ndescription: Placeholder for live sports scores - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which sports data API/tier to integrate\nversion: 1.1\n\"\"\"\n\nfrom pydantic import BaseModel, Field\n\n\nclass Tools:\n    class Valves(BaseModel):\n        fallback_url: str = Field(\n            default=\"https://www.espn.com/\",\n            description=\"URL to point users to for scores until real sports data integration is built\",\n        )\n\n    def __init__(self):\n        self.valves = self.Valves()\n        self.citation = True\n\n    def get_sports_score(self, team_or_league: str) -> str:\n        \"\"\"\n        ALWAYS use this tool for ANY question about a sports team's score, game result, standings,\n        or league table - for example \"what's the score of the Packers game\", \"did the Brewers win\",\n        \"how's the Bundesliga table looking\". Do NOT use web_search for these questions, even though\n        web_search is technically capable of finding sports scores online: this tool is the correct,\n        authoritative choice for sports queries on this system, and web_search should be reserved for\n        topics with no dedicated tool. Calling web_search instead of this tool for a sports question\n        is a mistake.\n\n        :param team_or_league: The team or league the user asked about, e.g. \"Packers\", \"Premier League\", \"Bundesliga\"\n        :return: An honest message explaining that live sports data isn't integrated yet, with a link to check manually.\n        \"\"\"\n        return (\n            f\"I don't have live sports data integrated yet, so I can't look up the score for \"\n            f\"'{team_or_league}' directly. A free/paid sports API integration (e.g. TheSportsDB, \"\n            f\"SportRadar, or API-Sports) is planned but not built yet - a prior free-tier attempt \"\n            f\"restricted current-season data and had unreliable team-name matching, so this is on \"\n            f\"hold pending a better source. In the meantime, check {self.valves.fallback_url} directly \"\n            f\"for current scores.\"\n        )\n",
+    "specs": [
+      {
+        "name": "get_sports_score",
+        "description": "ALWAYS use this tool for ANY question about a sports team's score, game result, standings,\nor league table - for example \"what's the score of the Packers game\", \"did the Brewers win\",\n\"how's the Bundesliga table looking\". Do NOT use web_search for these questions, even though\nweb_search is technically capable of finding sports scores online: this tool is the correct,\nauthoritative choice for sports queries on this system, and web_search should be reserved for\ntopics with no dedicated tool. Calling web_search instead of this tool for a sports question\nis a mistake.",
+        "parameters": {
+          "properties": {
+            "team_or_league": {
+              "description": "The team or league the user asked about, e.g. \"Packers\", \"Premier League\", \"Bundesliga\"",
+              "type": "string"
+            }
+          },
+          "required": [
+            "team_or_league"
+          ],
+          "type": "object"
+        }
+      }
+    ]
+  }
+]

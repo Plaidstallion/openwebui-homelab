@@ -1,0 +1,46 @@
+[
+  {
+    "id": "crypto_price_tool",
+    "user_id": "edc128a2-544e-49c8-a9cf-b462ea424107",
+    "name": "Crypto Price Tool",
+    "meta": {
+      "description": "Real-time cryptocurrency prices, 24h change, market cap, and volume via CoinGecko (free, no API key required)",
+      "manifest": {
+        "title": "Crypto Price Tool",
+        "author": "greg",
+        "version": "1.0",
+        "description": "Real-time cryptocurrency prices, 24h change, market cap, and volume via CoinGecko (free, no API key required)"
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1786156745,
+    "created_at": 1786156745,
+    "user": null,
+    "write_access": true,
+    "content": "\"\"\"\ntitle: Crypto Price Tool\nauthor: greg\ndescription: Real-time cryptocurrency prices, 24h change, market cap, and volume via CoinGecko (free, no API key required)\nversion: 1.0\n\"\"\"\n\nfrom datetime import datetime, timezone\n\nimport requests\nfrom pydantic import BaseModel, Field\n\n\nclass Tools:\n    class Valves(BaseModel):\n        vs_currency: str = Field(\n            default=\"usd\",\n            description=\"Default currency to price against when the user doesn't specify one (e.g. usd, eur, btc)\",\n        )\n        timeout_seconds: int = Field(\n            default=10,\n            description=\"HTTP request timeout in seconds\",\n        )\n\n    def __init__(self):\n        self.valves = self.Valves()\n        self.citation = True\n\n    def _resolve_coin(self, query: str):\n        \"\"\"Resolve a free-text coin name or ticker symbol to a CoinGecko coin id via the search endpoint.\"\"\"\n        try:\n            resp = requests.get(\n                \"https://api.coingecko.com/api/v3/search\",\n                params={\"query\": query},\n                timeout=self.valves.timeout_seconds,\n            )\n            resp.raise_for_status()\n            coins = resp.json().get(\"coins\", [])\n        except requests.RequestException:\n            return None\n\n        if not coins:\n            return None\n\n        query_lower = query.strip().lower()\n        for coin in coins:\n            if (\n                coin.get(\"symbol\", \"\").lower() == query_lower\n                or coin.get(\"name\", \"\").lower() == query_lower\n            ):\n                return coin\n        # Fall back to CoinGecko's top-ranked search result (usually the coin people mean, e.g. \"BTC\" -> Bitcoin)\n        return coins[0]\n\n    def get_crypto_price(self, coin: str, vs_currency: str = \"\") -> str:\n        \"\"\"\n        Get the current price, 24h change, market cap, and 24h volume for a cryptocurrency.\n\n        :param coin: Cryptocurrency name or ticker symbol, e.g. \"bitcoin\", \"BTC\", \"ethereum\", \"ETH\", \"dogecoin\"\n        :param vs_currency: Currency to price against, e.g. \"usd\", \"eur\". Leave blank to use the default configured currency.\n        :return: A readable summary of the coin's current market data, or an honest error message if the lookup fails.\n        \"\"\"\n        vs = (vs_currency or self.valves.vs_currency).strip().lower()\n\n        match = self._resolve_coin(coin)\n        if not match:\n            return (\n                f\"Couldn't find a cryptocurrency matching '{coin}' on CoinGecko. \"\n                f\"Try the full name (e.g. 'bitcoin') or the ticker symbol (e.g. 'BTC'), \"\n                f\"or check https://www.coingecko.com directly.\"\n            )\n\n        coin_id = match[\"id\"]\n        coin_name = match.get(\"name\", coin)\n        coin_symbol = match.get(\"symbol\", \"\").upper()\n\n        try:\n            resp = requests.get(\n                \"https://api.coingecko.com/api/v3/simple/price\",\n                params={\n                    \"ids\": coin_id,\n                    \"vs_currencies\": vs,\n                    \"include_market_cap\": \"true\",\n                    \"include_24hr_vol\": \"true\",\n                    \"include_24hr_change\": \"true\",\n                    \"include_last_updated_at\": \"true\",\n                },\n                timeout=self.valves.timeout_seconds,\n            )\n            resp.raise_for_status()\n            data = resp.json()\n        except requests.RequestException as e:\n            return (\n                f\"Found {coin_name} ({coin_symbol}) but couldn't reach CoinGecko's price endpoint right now \"\n                f\"({e.__class__.__name__}). Try again shortly, or check \"\n                f\"https://www.coingecko.com/en/coins/{coin_id} directly.\"\n            )\n\n        info = data.get(coin_id)\n        if not info or vs not in info:\n            return (\n                f\"CoinGecko doesn't have {coin_name} ({coin_symbol}) priced in '{vs}'. \"\n                f\"Try a common currency like 'usd' or 'eur', or check \"\n                f\"https://www.coingecko.com/en/coins/{coin_id} directly.\"\n            )\n\n        price = info[vs]\n        market_cap = info.get(f\"{vs}_market_cap\")\n        vol_24h = info.get(f\"{vs}_24h_vol\")\n        change_24h = info.get(f\"{vs}_24h_change\")\n        last_updated = info.get(\"last_updated_at\")\n\n        lines = [f\"{coin_name} ({coin_symbol}): {price:,.2f} {vs.upper()}\"]\n        if change_24h is not None:\n            direction = \"up\" if change_24h >= 0 else \"down\"\n            lines.append(f\"24h change: {direction} {abs(change_24h):.2f}%\")\n        if market_cap is not None:\n            lines.append(f\"Market cap: {market_cap:,.0f} {vs.upper()}\")\n        if vol_24h is not None:\n            lines.append(f\"24h volume: {vol_24h:,.0f} {vs.upper()}\")\n        if last_updated:\n            ts = datetime.fromtimestamp(last_updated, tz=timezone.utc).strftime(\n                \"%Y-%m-%d %H:%M UTC\"\n            )\n            lines.append(f\"Last updated: {ts}\")\n\n        return \"\\n\".join(lines)\n",
+    "specs": [
+      {
+        "name": "get_crypto_price",
+        "description": "Get the current price, 24h change, market cap, and 24h volume for a cryptocurrency.",
+        "parameters": {
+          "properties": {
+            "coin": {
+              "description": "Cryptocurrency name or ticker symbol, e.g. \"bitcoin\", \"BTC\", \"ethereum\", \"ETH\", \"dogecoin\"",
+              "type": "string"
+            },
+            "vs_currency": {
+              "default": "",
+              "description": "Currency to price against, e.g. \"usd\", \"eur\". Leave blank to use the default configured currency.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "coin"
+          ],
+          "type": "object"
+        }
+      }
+    ]
+  }
+]
