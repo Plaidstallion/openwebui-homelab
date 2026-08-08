@@ -223,6 +223,65 @@ After this, `docker logs whisper-stt --tail 20` showed a clean install and `Uvic
 
 **Takeaway if you hit a similar "fixed the config but the container still misbehaves" situation:** several categories of container configuration (DNS being one, but this generalizes) are only applied at container *creation*, not on every restart. If a daemon-level or compose-level config change doesn't seem to take effect, try `--force-recreate` before assuming the fix itself is wrong.
 
+## Step 8: A port conflict only mirrored networking mode could surface
+
+Sometime later, a TTS request during a live voice call failed with a `500 Internal Server Error` from `tts-router` at `/v1/audio/speech`, with this traceback in `docker logs tts-router`:
+
+```
+httpx.ConnectError: [Errno -2] Name or service not known
+```
+
+failing right where `tts-router` tries to POST to its backend, `openedai-speech`, per its compose config (`TTS_BACKEND_URL=http://openedai-speech:8000`).
+
+**First checked and ruled out — DNS**, same class of bug as Step 7:
+```bash
+docker exec tts-router getent hosts openedai-speech
+```
+This returned nothing at all (a successful lookup prints an IP). Followed the same fix as Whisper — force-recreate the affected containers:
+```bash
+cd ~/voice-stack
+docker compose up -d --force-recreate tts-router openedai-speech
+```
+
+This surfaced a **new, unrelated** error:
+```
+Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint openedai-speech
+failed to bind host port 0.0.0.0:8001/tcp: address already in use
+```
+
+**Diagnosis — checked both sides of the WSL2/Windows boundary:**
+```bash
+sudo lsof -i :8001
+```
+came back empty on the Linux side. But since mirrored networking mode (Step 5) makes WSL2 and Windows share the same real port space directly, the actual holder could just as easily be on the Windows side — which it was:
+```powershell
+netstat -ano | findstr 8001
+Get-Process -Id <PID_from_above>
+```
+This revealed a completely unrelated Windows service — the standalone `ImageServer` process from the [image generation setup](./image-generation-setup.md) — already listening on port 8001 natively on Windows, colliding with `openedai-speech`'s own `8001:8000` host port mapping in the voice-stack's `docker-compose.yml`.
+
+**Why this only broke now, despite both services existing for a while:** before mirrored networking mode, WSL2 had its own separate NAT IP/port space — a container "claiming" host port 8001 inside WSL2 never actually touched Windows' real port 8001. Mirrored mode makes WSL2 share the host's actual network stack, so a collision that was always latent between two unrelated services (one native Windows, one Dockerized) only became a real conflict after that networking change.
+
+**The fix:** nothing actually needs to reach `openedai-speech` via its host-published port — `tts-router` already talks to it over the internal Docker network by container name, not through the host mapping at all. The host port only exists for convenience/direct external testing. Simplest fix is just to move it off the colliding port. In `docker-compose.yml`:
+```yaml
+  openedai-speech:
+    ports:
+      - "8003:8000"   # was 8001:8000 - collided with the native ImageServer service on Windows
+```
+Then:
+```bash
+docker compose up -d --force-recreate openedai-speech
+```
+
+**One more gotcha hit along the way:** the earlier failed `--force-recreate tts-router openedai-speech` command had partially succeeded — it recreated `tts-router`'s container object but errored out before actually *starting* it, leaving it stuck in `Created` state (visible via `docker ps -a`, empty `docker logs`). A plain (non-force) start cleared it:
+```bash
+docker compose up -d tts-router
+```
+
+After both fixes, DNS resolution and the TTS pipeline worked correctly, confirmed via `docker exec tts-router getent hosts openedai-speech` returning a real IP, and a live voice call (including one deliberately mixing German and English mid-sentence, to check whether the earlier crash was actually a language-detection bug — it wasn't; `tts-router` correctly split the response into per-language chunks and switched Piper voices between them, no crash, once the DNS/port issue was fixed).
+
+**Takeaway:** mirrored networking mode doesn't just change WSL2-to-LAN reachability (Step 5) — it also unifies WSL2's and Windows' port spaces with each other. Any native Windows service and any Dockerized-in-WSL2 service can now collide on a shared port in a way that was structurally impossible before. Worth an inventory check of ports used by native Windows services (NSSM services, Task Scheduler tasks, anything else) against every `ports:` mapping in `docker-compose.yml` after switching to mirrored mode, rather than waiting to discover collisions one at a time.
+
 ## Summary of the final working setup
 
 - Ubuntu-24.04 WSL2 distro, systemd enabled
@@ -233,5 +292,6 @@ After this, `docker logs whisper-stt --tail 20` showed a clean install and `Uvic
 - A Windows Firewall inbound rule for the container ports, scoped to `Any` profile
 - An NSSM service (`WSL2VoiceStack`) running `wsl.exe -d Ubuntu-24.04 -- sleep infinity`, logged in as the real user account, set to auto-start
 - Containers recreated (not just restarted) after any daemon-level Docker config change
+- Host port mappings in `docker-compose.yml` checked against native Windows services for collisions (mirrored mode unifies the port space between WSL2 and Windows)
 
 No Docker Desktop, no login dependency, survives a genuine unattended reboot.
