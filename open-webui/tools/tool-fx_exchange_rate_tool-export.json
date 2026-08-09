@@ -1,0 +1,51 @@
+[
+  {
+    "id": "fx_exchange_rate_tool",
+    "user_id": "edc128a2-544e-49c8-a9cf-b462ea424107",
+    "name": "Exchange Rate Tool",
+    "meta": {
+      "description": "Real-time currency exchange rates and conversion via Frankfurter (ECB-sourced, free, no API key required)",
+      "manifest": {
+        "title": "Exchange Rate Tool",
+        "author": "greg",
+        "version": "1.0",
+        "description": "Real-time currency exchange rates and conversion via Frankfurter (ECB-sourced, free, no API key required)"
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1786249311,
+    "created_at": 1786249311,
+    "user": null,
+    "write_access": true,
+    "content": "\"\"\"\ntitle: Exchange Rate Tool\nauthor: greg\ndescription: Real-time currency exchange rates and conversion via Frankfurter (ECB-sourced, free, no API key required)\nversion: 1.0\n\"\"\"\n\nimport requests\nfrom pydantic import BaseModel, Field\n\n\nclass Tools:\n    class Valves(BaseModel):\n        timeout_seconds: int = Field(\n            default=10,\n            description=\"HTTP request timeout in seconds\",\n        )\n\n    def __init__(self):\n        self.valves = self.Valves()\n        self.citation = True\n\n    # Common everyday names mapped to ISO 4217 codes - Frankfurter only accepts codes,\n    # so this catches the phrasing people actually use (\"dollars\", \"euros\", \"yen\", ...)\n    _ALIASES = {\n        \"DOLLAR\": \"USD\", \"DOLLARS\": \"USD\", \"US DOLLAR\": \"USD\", \"US DOLLARS\": \"USD\",\n        \"EURO\": \"EUR\", \"EUROS\": \"EUR\",\n        \"POUND\": \"GBP\", \"POUNDS\": \"GBP\", \"STERLING\": \"GBP\", \"BRITISH POUND\": \"GBP\",\n        \"YEN\": \"JPY\",\n        \"FRANC\": \"CHF\", \"FRANCS\": \"CHF\", \"SWISS FRANC\": \"CHF\",\n        \"YUAN\": \"CNY\", \"RENMINBI\": \"CNY\",\n        \"CANADIAN DOLLAR\": \"CAD\", \"CANADIAN DOLLARS\": \"CAD\",\n        \"AUSTRALIAN DOLLAR\": \"AUD\", \"AUSTRALIAN DOLLARS\": \"AUD\",\n    }\n\n    def _normalize(self, currency: str) -> str:\n        cleaned = currency.strip().upper()\n        return self._ALIASES.get(cleaned, cleaned)\n\n    def get_exchange_rate(\n        self, from_currency: str, to_currency: str, amount: float = 1.0\n    ) -> str:\n        \"\"\"\n        ALWAYS use this tool for ANY question about currency exchange rates or converting an\n        amount from one currency to another - for example \"what's the exchange rate for USD to\n        EUR\", \"how many euros is 100 dollars\", \"convert 50 pounds to yen\". Do NOT use web_search\n        for these questions, even though web_search is technically capable of finding exchange\n        rates online: this tool is the correct, authoritative choice for currency conversion on\n        this system, and web_search should be reserved for topics with no dedicated tool. Calling\n        web_search instead of this tool for an exchange-rate question is a mistake.\n\n        :param from_currency: The source currency, as an ISO code (e.g. \"USD\") or common name (e.g. \"dollars\")\n        :param to_currency: The target currency, as an ISO code (e.g. \"EUR\") or common name (e.g. \"euros\")\n        :param amount: The amount to convert, in from_currency. Defaults to 1 (i.e. just the raw rate).\n        :return: The converted amount and the current rate, sourced from ECB daily reference rates - or an honest error message if the lookup fails.\n        \"\"\"\n        base = self._normalize(from_currency)\n        quote = self._normalize(to_currency)\n\n        try:\n            resp = requests.get(\n                f\"https://api.frankfurter.dev/v2/rate/{base}/{quote}\",\n                timeout=self.valves.timeout_seconds,\n            )\n        except requests.RequestException as e:\n            return (\n                f\"Couldn't reach the exchange rate service right now ({e.__class__.__name__}). \"\n                f\"Try again shortly, or check https://www.xe.com/currencyconverter/ directly.\"\n            )\n\n        if resp.status_code == 404:\n            return (\n                f\"Couldn't find a rate for '{from_currency}' to '{to_currency}' - one or both \"\n                f\"currency codes may not be recognized. Use standard 3-letter codes (e.g. USD, \"\n                f\"EUR, GBP, JPY), or check https://www.xe.com/currencyconverter/ directly.\"\n            )\n\n        try:\n            resp.raise_for_status()\n            data = resp.json()\n            rate = data[\"rate\"]\n            rate_date = data.get(\"date\")\n        except (requests.RequestException, KeyError, ValueError) as e:\n            return (\n                f\"Got an unexpected response looking up {base} to {quote} \"\n                f\"({e.__class__.__name__}). Try again shortly, or check \"\n                f\"https://www.xe.com/currencyconverter/ directly.\"\n            )\n\n        converted = amount * rate\n        lines = [f\"{amount:,.2f} {base} = {converted:,.2f} {quote}\"]\n        lines.append(f\"Rate: 1 {base} = {rate:.4f} {quote}\")\n        if rate_date:\n            lines.append(\n                f\"As of: {rate_date} (blended daily reference rate from central bank sources, \"\n                f\"not live intraday market data)\"\n            )\n\n        return \"\\n\".join(lines)\n",
+    "specs": [
+      {
+        "name": "get_exchange_rate",
+        "description": "ALWAYS use this tool for ANY question about currency exchange rates or converting an\namount from one currency to another - for example \"what's the exchange rate for USD to\nEUR\", \"how many euros is 100 dollars\", \"convert 50 pounds to yen\". Do NOT use web_search\nfor these questions, even though web_search is technically capable of finding exchange\nrates online: this tool is the correct, authoritative choice for currency conversion on\nthis system, and web_search should be reserved for topics with no dedicated tool. Calling\nweb_search instead of this tool for an exchange-rate question is a mistake.",
+        "parameters": {
+          "properties": {
+            "from_currency": {
+              "description": "The source currency, as an ISO code (e.g. \"USD\") or common name (e.g. \"dollars\")",
+              "type": "string"
+            },
+            "to_currency": {
+              "description": "The target currency, as an ISO code (e.g. \"EUR\") or common name (e.g. \"euros\")",
+              "type": "string"
+            },
+            "amount": {
+              "default": 1.0,
+              "description": "The amount to convert, in from_currency. Defaults to 1 (i.e. just the raw rate).",
+              "type": "number"
+            }
+          },
+          "required": [
+            "from_currency",
+            "to_currency"
+          ],
+          "type": "object"
+        }
+      }
+    ]
+  }
+]

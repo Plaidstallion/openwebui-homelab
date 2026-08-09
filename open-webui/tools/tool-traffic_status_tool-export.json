@@ -1,0 +1,41 @@
+[
+  {
+    "id": "traffic_status_tool",
+    "user_id": "edc128a2-544e-49c8-a9cf-b462ea424107",
+    "name": "Traffic Status Tool",
+    "meta": {
+      "description": "Placeholder for live traffic/commute conditions - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which traffic data API/tier to integrate",
+      "manifest": {
+        "title": "Traffic Status Tool",
+        "author": "greg",
+        "version": "1.0",
+        "description": "Placeholder for live traffic/commute conditions - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which traffic data API/tier to integrate"
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1786249311,
+    "created_at": 1786249311,
+    "user": null,
+    "write_access": true,
+    "content": "\"\"\"\ntitle: Traffic Status Tool\nauthor: greg\ndescription: Placeholder for live traffic/commute conditions - honestly reports that real-time lookups aren't supported yet and points the user to a manual source, pending a decision on which traffic data API/tier to integrate\nversion: 1.0\n\"\"\"\n\nfrom pydantic import BaseModel, Field\n\n\nclass Tools:\n    class Valves(BaseModel):\n        fallback_url: str = Field(\n            default=\"https://www.google.com/maps/@?api=1&map_action=map&layer=traffic\",\n            description=\"URL to point users to for traffic conditions until real traffic data integration is built\",\n        )\n\n    def __init__(self):\n        self.valves = self.Valves()\n        self.citation = True\n\n    def get_traffic_status(self, route_or_area: str) -> str:\n        \"\"\"\n        ALWAYS use this tool for ANY question about traffic or commute conditions - road congestion,\n        drive-time estimates, accidents, or how a specific route or area is looking right now - for\n        example \"how's traffic on the highway\", \"is my commute going to be bad today\", \"any accidents\n        on I-90\". Do NOT use web_search for these questions, even though web_search is technically\n        capable of finding traffic info online: this tool is the correct, authoritative choice for\n        traffic queries on this system, and web_search should be reserved for topics with no\n        dedicated tool. Calling web_search instead of this tool for a traffic question is a mistake.\n\n        :param route_or_area: The route, road, or area the user asked about, e.g. \"I-90\", \"downtown\", \"my commute\"\n        :return: An honest message explaining that live traffic data isn't integrated yet, with a link to check manually.\n        \"\"\"\n        return (\n            f\"I don't have live traffic data integrated yet, so I can't look up current conditions \"\n            f\"for '{route_or_area}' directly. A traffic API integration (e.g. Google Maps' Roads/\"\n            f\"Directions API, TomTom, or a similar keyed service) is planned but not built yet. \"\n            f\"In the meantime, check {self.valves.fallback_url} directly for current conditions.\"\n        )\n",
+    "specs": [
+      {
+        "name": "get_traffic_status",
+        "description": "ALWAYS use this tool for ANY question about traffic or commute conditions - road congestion,\ndrive-time estimates, accidents, or how a specific route or area is looking right now - for\nexample \"how's traffic on the highway\", \"is my commute going to be bad today\", \"any accidents\non I-90\". Do NOT use web_search for these questions, even though web_search is technically\ncapable of finding traffic info online: this tool is the correct, authoritative choice for\ntraffic queries on this system, and web_search should be reserved for topics with no\ndedicated tool. Calling web_search instead of this tool for a traffic question is a mistake.",
+        "parameters": {
+          "properties": {
+            "route_or_area": {
+              "description": "The route, road, or area the user asked about, e.g. \"I-90\", \"downtown\", \"my commute\"",
+              "type": "string"
+            }
+          },
+          "required": [
+            "route_or_area"
+          ],
+          "type": "object"
+        }
+      }
+    ]
+  }
+]
