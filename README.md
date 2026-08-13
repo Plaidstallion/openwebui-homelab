@@ -28,6 +28,7 @@ docs/
   image-generation-setup.md    # Automatic1111 + image server setup (NSSM Windows services)
   knowledge-rag-setup.md       # Knowledge/RAG setup and a disambiguation bug + fix
   wsl2-docker-migration.md     # Moving the voice stack off Docker Desktop to native Docker Engine in WSL2
+  performance-optimization.md  # Diagnosing and fixing a 30s digest response time (flash attention + prompt trimming)
 ```
 
 A couple of the `traefik/configurations/` files (`app-plex.yml.bak`, `app-embyl.yml.bak`) are disabled/backup copies, included as-is for reference. Note `app-embyl.yml.bak` has a router/service naming collision with `app-pihole.yml` (both use `-pihole-` in their resource names) — worth renaming before actually using it, this wasn't cleaned up in the original setup.
@@ -62,10 +63,13 @@ A couple of the `traefik/configurations/` files (`app-plex.yml.bak`, `app-embyl.
 
 7. **Set up backups** — see [`docs/backup-and-restore.md`](docs/backup-and-restore.md). Don't skip this, and don't skip actually testing a restore once it's running.
 
+8. **If responses feel slow**, see [`docs/performance-optimization.md`](docs/performance-optimization.md) before assuming it's your hardware — a single missing environment variable (`OLLAMA_FLASH_ATTENTION=1`, off by default and set at the OS level, not in any compose file here) accounted for most of a 30-second response time in this setup.
+
 ## A few things worth knowing before you dig in
 
 - **Two machines, not one.** If something in the main compose file references the gaming PC's IP (Ollama, the image server, etc.), you'll need to update that to match your own network.
 - **Tracks Open-WebUI's `:main` tag**, kept current via Watchtower — not a pinned release. Tested against v0.11.0 at the time of writing, but expect drift over time.
+- **Set `OLLAMA_FLASH_ATTENTION=1`** on whatever machine runs Ollama. It defaults to off and isn't captured in any exported config here since it's a machine-level env var, not a Docker setting — see `docs/performance-optimization.md`.
 - **One known unresolved bug**, documented honestly in `docs/image-generation-setup.md`: generated images don't render inline in the model's final chat response due to what looks like an upstream Open-WebUI/Ollama tool-call-parsing interaction. The image is always correctly generated and retrievable, just not auto-rendered. Living with it pending an upstream fix.
 
 ## Not included
